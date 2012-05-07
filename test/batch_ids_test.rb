@@ -28,9 +28,11 @@ class BatchIdsTest < Test::Unit::TestCase
       CreateTables.up
 
       CreateTables.create_sample_models
+      BatchIds.destroy_tmp_table(:model => AppModel)
     end
 
     teardown do
+      BatchIds.destroy_tmp_table(:model => AppModel)
       CreateTables.down
     end
 
@@ -49,8 +51,6 @@ class BatchIdsTest < Test::Unit::TestCase
       assert_equal BatchIds, batch.class
 
       assert_not_nil AppModel.connection.select_value("SELECT end_time FROM #{batch.tmp_table_name} WHERE id = #{AppModel.first.id}")
-
-      batch.destroy_tmp_table
     end
 
     should 'allow no args' do
@@ -61,7 +61,18 @@ class BatchIdsTest < Test::Unit::TestCase
       end
 
       assert_equal AppModel.all.collect {|mod| mod.id.to_s }.sort, yielded_ids
-      batch.destroy_tmp_table
+    end
+
+    should 'allow counting with optional conditions' do
+      batch = BatchIds.new(:model => AppModel, :batch_size => 4)
+
+      assert_equal AppModel.all.size, batch.count
+
+      yielded_ids = []
+      batch.each_batch do |id_set, bb|
+        yielded_ids += id_set
+        assert_equal yielded_ids.size, batch.count('start_time IS NOT NULL')
+      end
     end
   end
 end
