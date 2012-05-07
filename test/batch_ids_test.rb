@@ -34,7 +34,7 @@ class BatchIdsTest < Test::Unit::TestCase
       CreateTables.down
     end
 
-    should "yield all ids" do
+    should 'yield all ids' do
       yielded_ids = []
       yield_count = 0
 
@@ -53,5 +53,15 @@ class BatchIdsTest < Test::Unit::TestCase
       batch.destroy_tmp_table
     end
 
+    should 'allow no args' do
+      yielded_ids = []
+
+      batch = AppModel.each_batch do |id_set, bb|
+        yielded_ids += id_set
+      end
+
+      assert_equal AppModel.all.collect {|mod| mod.id.to_s }.sort, yielded_ids
+      batch.destroy_tmp_table
+    end
   end
 end
