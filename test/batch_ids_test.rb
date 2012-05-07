@@ -38,13 +38,19 @@ class BatchIdsTest < Test::Unit::TestCase
       yielded_ids = []
       yield_count = 0
 
-      AppModel.each_batch(:batch_size => 4, :reuse_tmp_table => true) do |id_set|
+      batch = AppModel.each_batch(:batch_size => 4, :reuse_tmp_table => true) do |id_set, bb|
         yield_count += 1
         yielded_ids += id_set
+        bb.mark_completed( id_set.first )
       end
 
       assert_equal 2, yield_count
       assert_equal AppModel.all.collect {|mod| mod.id.to_s }.sort, yielded_ids
+      assert_equal BatchIds, batch.class
+
+      assert_not_nil AppModel.connection.select_value("SELECT end_time FROM #{batch.tmp_table_name} WHERE id = #{AppModel.first.id}")
+
+      batch.destroy_tmp_table
     end
 
   end

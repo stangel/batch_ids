@@ -12,7 +12,9 @@ class BatchIds
   attr_reader :opts
 
   def self.each_batch(opts, &block)
-    new(opts).each_batch(&block)
+    new(opts).tap do |batch|
+      batch.each_batch(&block)
+    end
   end
 
   def initialize(_opts)
@@ -25,16 +27,24 @@ class BatchIds
       batch_ids = next_batch_ids
       break if batch_ids.blank?
 
-      block.call( batch_ids )
+      block.call( batch_ids, self )
     end
   end
 
-  def finish(id, result=nil)
+  def mark_completed(id, result=nil)
     sql = []
-    sql << "UPDATE #{opts[:tmp_table_name]} SET end_time = NOW()"
+    sql << "UPDATE #{tmp_table_name} SET end_time = NOW()"
     sql << ", result = '#{result.to_s.gsub(/'/, "''")}'" unless result.nil?
-    sql << " WHERE #{opts[:id_column]} = #{id}"
+    sql << " WHERE #{id_column} = #{id}"
     execute( sql.join )
+  end
+
+  def destroy_tmp_table
+    execute( "DROP TABLE IF EXISTS #{tmp_table_name} CASCADE" )
+  end
+
+  [:tmp_table_name, :id_column, :batch_size, :order, :conditions, :connection, :table_name, :reuse_tmp_table].each do |attr|
+    define_method(attr) { @opts[ attr ]}
   end
 
 private
@@ -60,23 +70,23 @@ private
   end
 
   def populate_ids
-    opts[:connection].execute( tmp_table_sql )
+    execute( tmp_table_sql )
   end
 
   def tmp_table_sql
     sql = []  # join more efficient than string concatenation
-    sql << "DROP TABLE IF EXISTS #{opts[:tmp_table_name]} CASCADE ; " if opts[:reuse_tmp_table]
-    sql << "CREATE TABLE #{opts[:tmp_table_name]} AS ("
-    sql << "  SELECT #{tmp_table_columns_sql} FROM #{sanitize_sql(opts[:table_name])} "
-    sql << ActiveRecord::Base.merge_conditions(opts[:conditions]) unless opts[:conditions].nil?
-    sql << " ORDER BY #{opts[:order]}"
+    sql << "DROP TABLE IF EXISTS #{tmp_table_name} CASCADE ; " if reuse_tmp_table
+    sql << "CREATE TABLE #{tmp_table_name} AS ("
+    sql << "  SELECT #{tmp_table_columns_sql} FROM #{sanitize_sql(table_name)} "
+    sql << ActiveRecord::Base.merge_conditions(conditions) unless conditions.nil?
+    sql << " ORDER BY #{order}"
     sql << " )"
 
     sql.join
   end
 
   def tmp_table_columns_sql
-    [ opts[:id_column],
+    [ id_column,
       new_column(:start_time, :timestamp),
       new_column(:end_time,   :timestamp),
       new_column(:result,     'varchar(255)')
@@ -89,14 +99,18 @@ private
 
   def next_batch_ids
     sql = []
-    sql << "UPDATE #{opts[:tmp_table_name]} SET start_time = NOW() WHERE #{opts[:id_column]} IN "
-    sql << "(select #{opts[:id_column]} from #{opts[:tmp_table_name]} WHERE start_time IS NULL "
-    sql << "ORDER BY #{opts[:order]} LIMIT #{opts[:batch_size]}) "
-    sql << "RETURNING #{opts[:id_column]}"
-    opts[:connection].select_values( sql.join )
+    sql << "UPDATE #{tmp_table_name} SET start_time = NOW() WHERE #{id_column} IN "
+    sql << "(select #{id_column} from #{tmp_table_name} WHERE start_time IS NULL "
+    sql << "ORDER BY #{order} LIMIT #{batch_size}) "
+    sql << "RETURNING #{id_column}"
+    connection.select_values( sql.join )
   end
 
   def sanitize_sql(sql)
-    ActiveRecord::Base.send(:sanitize_sql, sql, opts[:table_name])
+    ActiveRecord::Base.send(:sanitize_sql, sql, table_name)
+  end
+
+  def execute(sql)
+    connection.execute( sql )
   end
 end
