@@ -17,6 +17,10 @@ class BatchIds
     end
   end
 
+  def self.resume(_opts, &block)
+    new(_opts.merge(:resume => true))
+  end
+
   def self.destroy_tmp_table(_opts)
     opts = parse_opts(_opts)
     opts[:connection].execute( "DROP TABLE IF EXISTS #{opts[:tmp_table_name]} CASCADE" )
@@ -24,7 +28,7 @@ class BatchIds
 
   def initialize(_opts)
     @opts = self.class.parse_opts(_opts)
-    populate_ids
+    populate_ids unless self.resume
   end
 
   def each_batch(&block)
@@ -62,7 +66,7 @@ class BatchIds
     execute( "DROP TABLE IF EXISTS #{tmp_table_name} CASCADE" )
   end
 
-  [:tmp_table_name, :id_column, :batch_size, :order, :conditions, :connection, :table_name, :reuse_tmp_table].each do |attr|
+  [:tmp_table_name, :id_column, :batch_size, :order, :conditions, :connection, :table_name, :resume].each do |attr|
     define_method(attr) { @opts[ attr ]}
   end
 
@@ -85,7 +89,7 @@ private
     #raise(RuntimeError, 'Sorry, only Postgres is supported at this time') if opts[:connection].config[:adapter] != 'postgresql'
 
     opts[:tmp_table_name]  = ['batch', opts[:table_name], opts[:id_column], _opts[:partition]].compact.join('_')
-    opts[:reuse_tmp_table] = _opts[:reuse_tmp_table]
+    opts[:resume]          = _opts[:resume]
 
     opts
   end
@@ -96,7 +100,7 @@ private
 
   def tmp_table_sql
     sql = []  # join more efficient than string concatenation
-    sql << "DROP TABLE IF EXISTS #{tmp_table_name} CASCADE ; " if reuse_tmp_table
+    sql << "DROP TABLE IF EXISTS #{tmp_table_name} CASCADE ; "
     sql << "CREATE TABLE #{tmp_table_name} AS ("
     sql << "  SELECT #{tmp_table_columns_sql} FROM #{sanitize_sql(table_name, table_name)} "
     sql << "  WHERE #{merge_conditions(conditions, table_name)}" unless conditions.nil?

@@ -40,7 +40,7 @@ class BatchIdsTest < Test::Unit::TestCase
       yielded_ids = []
       yield_count = 0
 
-      batch = AppModel.each_batch(:batch_size => 4, :reuse_tmp_table => true) do |id_set, bb|
+      batch = AppModel.each_batch(:batch_size => 4) do |id_set, bb|
         yield_count += 1
         yielded_ids += id_set
         bb.mark_completed( id_set.first )
@@ -72,6 +72,24 @@ class BatchIdsTest < Test::Unit::TestCase
       batch.each_batch do |id_set, bb|
         yielded_ids += id_set
         assert_equal yielded_ids.size, batch.count('start_time IS NOT NULL')
+      end
+    end
+
+    context 'resume' do
+      should 'continue previous batch' do
+        yielded_ids = []
+
+        batch = AppModel.each_batch do |id_set, bb|
+          yielded_ids += id_set
+          break
+        end
+
+        batch = AppModel.each_batch(:resume => true) do |id_set, bb|
+          yielded_ids += id_set
+          break
+        end
+
+        assert_equal AppModel.all.collect {|mod| mod.id.to_s }.sort, yielded_ids
       end
     end
   end
