@@ -133,7 +133,7 @@ private
 
   def merge_conditions(_conditions, _table_name)
     segments = []
-
+    _conditions = [_conditions] if _conditions.kind_of?(String)
     _conditions.each do |condition|
       unless condition.blank?
         condition[0] = condition[0].to_s if condition.kind_of?(Array)
