@@ -54,6 +54,14 @@ class BatchIds
     result.to_i unless result.nil?
   end
 
+  def estimated_seconds_remaining
+    ((Time.now.to_i - batch_start_time.to_i) / batch_progress.to_f) * (batch_total - batch_progress)
+  end
+
+  def progress_string
+    "#{Time.now.to_sql_s}: #{batch_progress} / #{batch_total} (#{estimated_seconds_remaining.to_i} seconds remaining)"
+  end
+
   def mark_completed(id, result=nil)
     sql = []
     sql << "UPDATE #{tmp_table_name} SET end_time = NOW()"
